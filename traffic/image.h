@@ -6,7 +6,8 @@
  * input, the picture to the panel, boxes, the counting line and text.
  *
  * The panel frame is APP_DISPLAY_WIDTH x APP_DISPLAY_HEIGHT RGB888 (480 x 800,
- * portrait). The picture goes in a square view of the panel width, 480 x 480,
+ * portrait), in the CDC200's byte order B, G, R; colours given as uint32_t are
+ * 0xRRGGBB. The picture goes in a square view of the panel width, 480 x 480,
  * centred vertically; above and below it are the status lines.
  */
 #ifndef TRAFFIC_IMAGE_H_

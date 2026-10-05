@@ -18,7 +18,8 @@
  *   5. the result goes into the Detections stream while recording or playing back
  *   6. the panel: the picture in a 480x480 view; the tracks, the line, the
  *      tallies and the score maps around it in the display thread, while the
- *      NPU works on the next frame; double-buffered
+ *      NPU works on the next frame; double-buffered. With SDSIO-Server's flag
+ *      0 set the shown frame goes into the Panel stream too.
  *
  * The console is a log buffer that the debugger reads (board layer); the
  * counts, the latest result and the frame timing are in the global
@@ -88,6 +89,7 @@ struct TrafficStatus {
   uint32_t track_us;        // tracker_update
   uint32_t picture_us;      // the input into the frame buffer (vision thread)
   uint32_t display_us;      // display thread: boxes, text, heat maps and cache clean
+  uint32_t panel_us;        // display thread: the shown frame into the SDS Panel stream
   uint32_t sds_us;          // SDS writes
   float fps;                // frames per second, averaged over one second
   float wb_gain[3];         // white balance gains R, G, B
@@ -163,6 +165,13 @@ enum Source { kTestImage = 0, kCamera = 1, kPlayback = 2 };
 // the vision thread is not reading. The vision thread takes the newest slot
 // and holds it for the frame; the camera thread writes the other one, again
 // and again, so the vision thread always finds the newest complete frame.
+// A camera frame that arrives while a converted one still waits unread is
+// skipped: the camera delivers about twice the frames the detector takes, and
+// a conversion (7 ms) that nobody reads costs the detector CPU time. The
+// thread takes the frames above the vision thread (the next snapshot starts
+// in camera_frame()) but converts below it, so the one conversion per frame
+// goes into the vision thread's waits for the NPU, not into the detector's CPU
+// work (the attention cores and the copies between its NPU methods).
 volatile int g_slot_newest = -1;   // the newest complete input, -1 when taken
 volatile int g_slot_reading = -1;  // the vision thread's input
 volatile bool g_camera_pause;      // playback: the slots belong to the vision thread
@@ -173,14 +182,24 @@ volatile uint32_t g_convert_cycles, g_camera_mean;
 
 __NO_RETURN void camera_thread(void*) {
   for (;;) {
+    // No snapshots during a playback: nobody reads them, and during playbacks
+    // a snapshot wrote about 1 kB past the end of the last camera buffer,
+    // into the SDS control thread's stack behind it (RTX then stopped in
+    // osRtxErrorNotify, stack overflow, after 580 and 1420 frames).
+    // camera_frame() starts the next snapshot when the playback is over.
+    if (g_camera_pause) {
+      osDelay(10);
+      continue;
+    }
     const void* frame = camera_frame(200);
-    if (frame == nullptr || g_camera_pause) continue;
+    if (frame == nullptr || g_camera_pause || g_slot_newest >= 0) continue;
     osKernelLock();
     int slot = 0;
     while (slot == g_slot_reading) ++slot;
     if (g_slot_newest == slot) g_slot_newest = -1;  // being rewritten: not to be taken meanwhile
     g_camera_busy = true;
     osKernelUnlock();
+    osThreadSetPriority(osThreadGetId(), osPriorityBelowNormal);
     const uint32_t t0 = DWT->CYCCNT;
 #if CAMERA_RAW8
     uint32_t mean = 0;
@@ -193,6 +212,7 @@ __NO_RETURN void camera_thread(void*) {
                           CAMERA_QUARTER_TURNS);
 #endif
     g_convert_cycles = DWT->CYCCNT - t0;
+    osThreadSetPriority(osThreadGetId(), osPriorityAboveNormal);
     osKernelLock();
     g_slot_newest = slot;
     g_camera_busy = false;
@@ -310,6 +330,7 @@ struct DisplayJob {
   bool has_scores;
   Source source;
   int mode;
+  uint32_t timeslot;
   float fps;
 };
 DisplayJob g_job;
@@ -334,6 +355,16 @@ __NO_RETURN void display_thread(void*) {
     // Presented takes effect at the panel's next refresh: until then the
     // other buffer is still on the panel and must not be drawn over.
     display_wait_shown(fb);
+#ifdef APP_HAS_SDS
+    // The frame as the panel shows it into the Panel stream (open only when
+    // SDSIO-Server's flag 0 asked for it), before the vision thread may draw
+    // into this buffer again: a slow link holds the loop back, no frame is lost.
+    if (g_job.mode != REC_PLAY_IDLE) {
+      const uint32_t t1 = cycles();
+      rec_play_write_panel(fb, IMAGE_PANEL_H, IMAGE_PANEL_W * 3, g_job.timeslot);
+      traffic_status.panel_us = us(cycles() - t1);
+    }
+#endif
     osSemaphoreRelease(g_display_idle);
   }
 }
@@ -558,7 +589,17 @@ extern "C" int app_main(void) {
     uint32_t t0 = cycles();
 #ifdef APP_HAS_SDS
     if (mode == REC_PLAY_PLAYBACK) {
-      if (rec_play_read_input(g_input, kInputBytes, &timeslot) != 1) continue;  // ended: the streams close at the next poll
+      if (rec_play_read_input(g_input, kInputBytes, &timeslot) != 1) {
+        // Ended: the streams close at the next poll, once the display thread
+        // has put the last frame on the panel (and into the Panel stream).
+#ifdef APP_HAS_DISPLAY
+        if (display_on) {
+          osSemaphoreAcquire(g_display_idle, osWaitForever);
+          osSemaphoreRelease(g_display_idle);
+        }
+#endif
+        continue;
+      }
       source = kPlayback;
     }
 #endif
@@ -636,6 +677,7 @@ extern "C" int app_main(void) {
       }
       g_job.source = source;
       g_job.mode = mode;
+      g_job.timeslot = timeslot;
       g_job.fps = fps;
       osSemaphoreRelease(g_display_go);
       back ^= 1;

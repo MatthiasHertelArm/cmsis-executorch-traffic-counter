@@ -1,0 +1,17 @@
+sds:
+  name: Panel
+  description: >-
+    What the traffic counter's panel shows, every frame: the CDC200's 480x800
+    frame buffer in records of 40 rows (20 records per frame, all with the
+    frame's timeslot). The bytes are as in the frame buffer: B, G, R per
+    pixel, and the picture turned by 180 degrees (the panel hangs upside down
+    on the AppKit-E7). Recorded while SDSIO-Server's flag 0 is set
+    (traffic/sds_session.py --panel); traffic/panel_to_video.py joins the
+    records, turns the frames upright and makes an MP4.
+  tick-frequency: 1000
+  content:
+    - image:
+        pixel_format: RGB888
+        width: 480
+        height: 40
+        stride_bytes: 1440

@@ -3,14 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """Images to a CameraIn stream for playback into the traffic counter, and the check of what it found.
 
-    python traffic/images_to_sds.py make [--fill] <out dir> <image> [<image> ...]   # -> <out dir>/CameraIn.0.sds
+    python traffic/images_to_sds.py make [--fill] [--fps N] <out dir> <image> [<image> ...]   # -> <out dir>/CameraIn.0.sds
     python traffic/images_to_sds.py check <out dir>                        # board vs host, per image
 
 make: every image letterboxed to the model input (416x416 RGB888, as
 model/traffic.py and traffic/make_test_image.py do it) or, with --fill, its
 central square cut out and scaled to fill the input (a wide video loses its
-sides but no rows to the bars); one record per image, 100 ms apart, plus the
-metadata files. Play it with
+sides but no rows to the bars); one record per image, time-stamped 1000/N ms
+apart in the stream's 1 kHz ticks (--fps N, default 10: 100 ms, which
+traffic/eval_vehicles.py expects), plus the metadata files. The board plays
+the records back at these times. Play it with
 `python traffic/sds_session.py play --workdir <out dir>`.
 
 check: reads CameraIn.0.sds and the board's Detections.0.p.sds, runs the
@@ -56,7 +58,7 @@ def fill(bgr, size: int):
     return cv2.cvtColor(cv2.resize(square, (size, size), interpolation=interpolation), cv2.COLOR_BGR2RGB)
 
 
-def make(out: Path, images: list[Path], fill_input: bool = False) -> None:
+def make(out: Path, images: list[Path], fill_input: bool = False, fps: float = 10.0) -> None:
     import cv2
 
     from traffic import IMAGE_SIZE, letterbox
@@ -72,12 +74,12 @@ def make(out: Path, images: list[Path], fill_input: bool = False) -> None:
             else:
                 rgb, _, _ = letterbox(bgr, IMAGE_SIZE)
             data = np.ascontiguousarray(rgb).tobytes()
-            f.write(struct.pack("<II", i * 100, len(data)))
+            f.write(struct.pack("<II", round(i * 1000 / fps), len(data)))
             f.write(data)
     (out / "CameraIn.0.txt").write_text("\n".join(str(p) for p in images) + "\n")
     for meta in ("CameraIn.sds.yml", "Detections.sds.yml"):
         shutil.copy(ROOT / "recordings/traffic" / meta, out / meta)
-    print(f"{out / 'CameraIn.0.sds'}: {len(images)} records of {IMAGE_SIZE}x{IMAGE_SIZE} RGB888")
+    print(f"{out / 'CameraIn.0.sds'}: {len(images)} records of {IMAGE_SIZE}x{IMAGE_SIZE} RGB888 at {fps:g} fps")
 
 
 def check(out: Path) -> None:
@@ -109,8 +111,13 @@ def main() -> None:
     args = sys.argv[1:]
     fill_input = "--fill" in args
     args = [a for a in args if a != "--fill"]
+    fps = 10.0
+    if "--fps" in args:
+        i = args.index("--fps")
+        fps = float(args[i + 1])
+        del args[i : i + 2]
     if len(args) >= 3 and args[0] == "make":
-        make(Path(args[1]), [Path(p) for p in args[2:]], fill_input)
+        make(Path(args[1]), [Path(p) for p in args[2:]], fill_input, fps)
     elif len(args) == 2 and args[0] == "check":
         check(Path(args[1]))
     else:

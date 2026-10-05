@@ -3,8 +3,10 @@
 #
 # Traffic counter with Ultralytics YOLO26n on the Ethos-U55 of the Alif
 # Ensemble E7 (Cortex-M55 HP core, AppKit-E7): the vehicles the camera sees
-# are detected on the NPU (model/traffic.py runs whole on it, the CPU
-# thresholds the scores and decodes the boxes), followed from frame to frame
+# are detected on the NPU (model/traffic.py, YOLO26n without attention
+# fine-tuned on vehicles; the CPU thresholds the scores and decodes the
+# boxes, and with the attention of the COCO-pretrained YOLO26n it also runs
+# that between three NPU methods), followed from frame to frame
 # by a small tracker and counted, per class and direction, as they cross a
 # line on the picture; the panel shows the picture, the boxes, the line and
 # the tallies. SDS records and plays back the model input. See
@@ -26,11 +28,16 @@ project:
   # The counting line: TRAFFIC_LINE_POS is its position in input pixels
   # (default: the middle), TRAFFIC_LINE_VERTICAL 1 makes it vertical (left to
   # right traffic) instead of horizontal (top to bottom). A benchmark build
-  # (documentation/traffic-counter.md): TRAFFIC_BENCHMARK: 50.
-  # define:
-  #   - TRAFFIC_LINE_POS: 208
-  #   - TRAFFIC_LINE_VERTICAL: 0
-  #   - TRAFFIC_BENCHMARK: 50
+  # (documentation/traffic-counter.md): TRAFFIC_BENCHMARK: 50. Vertical
+  # for the Amsterdam crossing (recordings/traffic/youtube_*): its traffic
+  # moves twice as far in x as in y and runs below the middle, so over the
+  # whole video a vertical line in the middle counts 261 crossings, a
+  # horizontal one 29 (traffic/count_playback.py --sweep). The joystick's
+  # centre button turns it.
+  define:
+    # - TRAFFIC_LINE_POS: 208
+    - TRAFFIC_LINE_VERTICAL: 1
+    # - TRAFFIC_BENCHMARK: 50
 
   groups:
     - group: App
@@ -42,6 +49,10 @@ project:
         # YOLO26n on the NPU and the rest of its head on the CPU.
         - file: ./detector.cpp
         - file: ./detector.h
+        # The attention cores of its two PSA blocks, on the CPU between the
+        # NPU methods (model/traffic.py, TRAFFIC_ATTENTION=cpu).
+        - file: ./attention.c
+        - file: ./attention.h
         # The tracks and the counting line.
         - file: ./tracker.c
         - file: ./tracker.h

@@ -5,6 +5,7 @@
 
     python traffic/sds_session.py record 20        # 20 s of CameraIn + Detections
     python traffic/sds_session.py play             # CameraIn.<n>.sds back into the detector
+    python traffic/sds_session.py play --panel     # ... and what the panel shows (Panel.<n>.p.sds)
 
 It starts SDSIO-Server (ARM::SDS utilities) on the board's User USB
 (--transport usb, the default: the firmware enumerates as "SDSIO-Client")
@@ -13,6 +14,11 @@ recording, P a playback, S stops, X ends the server. The firmware must be
 running (it opens the streams when the server says so, rec_play.c). Files go
 to recordings/traffic/ (CameraIn.<n>.sds, Detections.<n>.sds, and
 Detections.<n>.p.sds for a playback), next to their *.sds.yml metadata.
+
+--panel sets the server's flag 0 (key A) before the start: the firmware then
+also streams every frame as the panel shows it (Panel.<n>.sds, or
+Panel.<n>.p.sds in a playback; 1.15 MB a frame, so the loop slows to what the
+USB moves). traffic/panel_to_video.py makes an MP4 of it.
 
 With --transport rtt it starts tools/sdsio_rtt_bridge.py (the J-Link's RTT
 channel 1 on a TCP socket) and SDSIO-Server in connect mode on it, for a
@@ -59,6 +65,10 @@ def main() -> int:
     ap.add_argument("--transport", choices=["usb", "rtt"], default="usb",
                     help="usb: the board's User USB (SDS:IO:USB, no J-Link); rtt: the J-Link RTT bridge")
     ap.add_argument("--timeout", type=float, default=1800.0, help="longest playback in seconds")
+    ap.add_argument("--connect-timeout", type=float, default=120.0,
+                    help="how long to wait for the board's SDSIO-Client (it connects when the firmware starts)")
+    ap.add_argument("--panel", action="store_true",
+                    help="also record the panel (the Panel stream, server flag 0)")
     args = ap.parse_args()
 
     args.workdir.mkdir(parents=True, exist_ok=True)
@@ -95,7 +105,21 @@ def main() -> int:
                 sys.stdout.flush()
 
     try:
-        pump(4.0)  # connect, the first flags exchange
+        # The firmware's SDSIO client connects only while it starts ("SDSIO-Client
+        # USB interface initialization failed" otherwise): start the server,
+        # then reset the board. Its first flags exchange ("sdsFlags = ...")
+        # shows that it is there; the USB device alone may be a client that gave up.
+        deadline = time.monotonic() + args.connect_timeout
+        while server.poll() is None and "sdsFlags" not in "".join(output):
+            if time.monotonic() > deadline:
+                print(f"\nno SDSIO-Client within {args.connect_timeout:.0f} s: reset the board while the server runs",
+                      file=sys.stderr)
+                break
+            pump(0.5)
+        pump(2.0)  # the first flags exchange
+        if args.panel:
+            os.write(master, b"A")  # flag 0: the firmware opens the Panel stream with the others
+            pump(0.5)
         if args.mode == "record":
             os.write(master, b"R")
             pump(args.seconds)
@@ -106,11 +130,17 @@ def main() -> int:
             os.write(master, b"P")
             # The firmware closes its streams at the end of CameraIn (about 5 s
             # per 416x416 frame over the RTT down link); SDSIO-Server reports it.
+            # The Panel stream closes after Detections.
+            last = "Closed:   Panel" if args.panel else "Closed:   Detections"
             while server.poll() is None and time.time() - started < args.timeout:
                 pump(1.0)
-                if "Closed:   Detections" in "".join(output):
+                text = "".join(output)
+                if last in text or ("Closed:   Detections" in text and "Record:   Panel" not in text):
                     break
             pump(3.0)
+        if args.panel:
+            os.write(master, b"a")
+            pump(0.5)
         os.write(master, b"X")
         pump(3.0)
     finally:

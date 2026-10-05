@@ -61,12 +61,12 @@ def num_anchors(size: int | None = None) -> int:
     return sum((size // s) ** 2 for s in STRIDES)
 
 
-def load_detection_model() -> nn.Module:
-    """The COCO-pretrained YOLO26n, BatchNorm folded, one-to-one head only (Ultralytics downloads the weights)."""
+def load_detection_model(weights: str | Path | None = None) -> nn.Module:
+    """The COCO-pretrained YOLO26n (or `weights`), BatchNorm folded, one-to-one head only (Ultralytics downloads the weights)."""
     from ultralytics import YOLO
 
     CACHE.mkdir(exist_ok=True)
-    model = YOLO(str(CACHE / WEIGHTS)).model
+    model = YOLO(str(weights or CACHE / WEIGHTS)).model
     model = copy.deepcopy(model).float().eval()
     model.model[-1].end2end = True  # fuse() then drops the one-to-many branch and keeps one2one_*
     return model.fuse(verbose=False)

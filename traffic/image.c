@@ -7,8 +7,10 @@
  * RAW8 Bayer as the CPI stores the ARX3A0's frames: one byte per pixel, the
  * colour of each pixel given by its position in the 2x2 mosaic. RGB565 as the
  * CPI stores an MT9M114's frames: one halfword per pixel, B in bits 4:0, G in
- * 10:5, R in 15:11. RGB888 is three bytes per pixel, R first: the model input
- * and the panel frame alike.
+ * 10:5, R in 15:11. The model input is RGB888, three bytes per pixel, R
+ * first. The panel frame is the CDC200's RGB888, one 24-bit word per pixel
+ * with R in bits 23:16 and B in 7:0 (HWRM, CDC_Ln_PIX_FORMAT), so in memory
+ * B first: image_input_to_view() and image_fill() write B, G, R.
  */
 
 #include <stdint.h>
@@ -134,10 +136,18 @@ void image_rgb565_to_input(const uint16_t *camera, int w, int h, uint8_t *rgb, i
 {
     const int side = w < h ? w : h;
     const int x0 = (w - side) / 2, y0 = (h - side) / 2;
+    /* Source column of each output column, and one destination step per row
+       (as in image_bayer_to_input): no division or index per pixel. */
+    static uint16_t col[1024];
+    for (int x = 0; x < size; x++) {
+        col[x] = (uint16_t)(x0 + x * side / size);
+    }
     for (int y = 0; y < size; y++) {
-        const uint16_t *row = camera + (y0 + y * side / size) * w + x0;
-        for (int x = 0; x < size; x++) {
-            rgb565_to_888(row[x * side / size], rgb + turned_index(x, y, size, quarter_turns) * 3);
+        const uint16_t *row = camera + (y0 + y * side / size) * w;
+        uint8_t *d = rgb + turned_index(0, y, size, quarter_turns) * 3;
+        const int dstep = (quarter_turns & 3) == 0 ? 3 : (turned_index(1, y, size, quarter_turns) - turned_index(0, y, size, quarter_turns)) * 3;
+        for (int x = 0; x < size; x++, d += dstep) {
+            rgb565_to_888(row[col[x]], d);
         }
     }
 }
@@ -152,21 +162,23 @@ void image_rgb565_to_input(const uint16_t *camera, int w, int h, uint8_t *rgb, i
 
 void image_input_to_view(const uint8_t *rgb, int size, uint8_t *panel)
 {
-    /* 1:1, centred in the view: a row copy each, no scaling. The margins stay as they are. */
+    /* 1:1, centred in the view, no scaling. The margins stay as they are. */
     const int x0 = (IMAGE_VIEW - size) / 2, y0 = IMAGE_VIEW_TOP + (IMAGE_VIEW - size) / 2;
     for (int y = 0; y < size; y++) {
+        const uint8_t *s = rgb + y * size * 3;
 #if IMAGE_PANEL_TURN_180
         /* Row y of the picture lands on panel row H-1-(y0+y), pixels reversed. */
-        const uint8_t *s = rgb + y * size * 3;
         uint8_t *d = panel + ((IMAGE_PANEL_H - 1 - (y0 + y)) * IMAGE_PANEL_W + (IMAGE_PANEL_W - 1 - x0)) * 3;
-        for (int x = 0; x < size; x++, s += 3, d -= 3) {
-            d[0] = s[0];
-            d[1] = s[1];
-            d[2] = s[2];
-        }
+        const int step = -3;
 #else
-        memcpy(panel + ((y0 + y) * IMAGE_PANEL_W + x0) * 3, rgb + y * size * 3, (size_t)size * 3U);
+        uint8_t *d = panel + ((y0 + y) * IMAGE_PANEL_W + x0) * 3;
+        const int step = 3;
 #endif
+        for (int x = 0; x < size; x++, s += 3, d += step) {
+            d[0] = s[2]; /* R, G, B to the panel's B, G, R */
+            d[1] = s[1];
+            d[2] = s[0];
+        }
     }
 }
 
@@ -215,9 +227,16 @@ void image_draw_tracks(uint8_t *panel, const track_t *tracks, int size)
         }
         box(panel, x1, y1, x2, y2, t->confirmed ? 3 : 1, colour);
         snprintf(label, sizeof(label), "%lu %s%s", (unsigned long)t->id, DETECTOR_CLASS_NAMES[t->cls], t->counted ? " +" : "");
-        const int ly = y1 - 16 >= y0 ? y1 - 16 : y1 + 4;
-        image_fill(panel, x1, ly - 1, x1 + 12 * (int)strlen(label) + 2, ly + 15, 0x000000U);
-        image_text(panel, x1 + 2, ly, 2, label, colour);
+        /* Above the box, or inside it at the top edge; shifted left and up to
+           stay inside the picture: the margins around it are never redrawn,
+           so a label that ran into them stayed there. */
+        const int lw = 12 * (int)strlen(label) + 2;
+        int lx = x1 + lw <= x0 + size ? x1 : x0 + size - lw;
+        lx = lx < x0 ? x0 : lx;
+        int ly = y1 - 16 >= y0 + 1 ? y1 - 16 : y1 + 4;
+        ly = ly + 15 <= y0 + size ? ly : y0 + size - 15;
+        image_fill(panel, lx, ly - 1, lx + lw, ly + 15, 0x000000U);
+        image_text(panel, lx + 2, ly, 2, label, colour);
     }
 }
 
@@ -270,9 +289,9 @@ void image_fill(uint8_t *panel, int x0, int y0, int x1, int y1, uint32_t rgb)
     for (int y = y0; y < y1; y++) {
         uint8_t *p = panel + (y * IMAGE_PANEL_W + x0) * 3;
         for (int x = x0; x < x1; x++, p += 3) {
-            p[0] = r;
+            p[0] = b; /* the panel's byte order */
             p[1] = g;
-            p[2] = b;
+            p[2] = r;
         }
     }
 }

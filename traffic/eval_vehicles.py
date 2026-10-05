@@ -28,6 +28,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "model"))
+sys.path.insert(0, str(HERE))
 
 
 def load_dataset(dirs: list[Path], classes: list[int]) -> list[tuple[Path, np.ndarray]]:
@@ -53,24 +54,73 @@ def iou(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return inter / (area(a)[:, None] + area(b)[None, :] - inter + 1e-9)
 
 
-def evaluate(run, items, size: int, threshold: float) -> dict:
-    """run(input) -> (box (4, N), score (C, N)); AP50 over all images and P / R at `threshold`."""
+def board_like(det: np.ndarray, threshold: float = 0.30, keep: int = 16, duplicate: float = 0.70) -> np.ndarray:
+    """What traffic/detector.cpp keeps of the decoded anchors: score above the threshold,
+    strongest first, no box overlapping a stronger one by IoU > 0.7, at most 16."""
+    det = det[det[:, 4] > threshold]
+    det = det[np.argsort(-det[:, 4])][: 2 * keep]
+    kept: list[np.ndarray] = []
+    for d in det:
+        if len(kept) == keep:
+            break
+        if not kept or iou(d[None, :4], np.array(kept)[:, :4]).max() <= duplicate:
+            kept.append(d)
+    return np.array(kept, np.float32).reshape(-1, 6)
+
+
+def detections(run, items, size: int, board: bool = False) -> list[np.ndarray]:
+    """run(input) -> (box (N, 4), score (N, C)) per image, decoded to (K, 6) in image pixels."""
     import cv2
     import torch
 
     from traffic import decode, letterbox, to_input
 
-    scored, n_gt = [], 0  # (score, is_true_positive)
-    tp_t = fp_t = 0
-    for path, gt in items:
-        bgr = cv2.imread(str(path))
-        h, w = bgr.shape[:2]
-        rgb, r, (px, py) = letterbox(bgr, size)
+    out = []
+    for path, _ in items:
+        rgb, r, (px, py) = letterbox(cv2.imread(str(path)), size)
         with torch.no_grad():
             box, score = run(to_input(rgb))
         det = decode(box[0].numpy(), score[0].numpy(), 0.01, size)
+        if board:
+            det = board_like(det)
         det[:, [0, 2]] = (det[:, [0, 2]] - px) / r
         det[:, [1, 3]] = (det[:, [1, 3]] - py) / r
+        out.append(det)
+    return out
+
+
+def board_detections(workdir: Path, items, size: int) -> list[np.ndarray]:
+    """The board's detections of a playback of the same images (traffic/images_to_sds.py make,
+    traffic/sds_session.py play): Detections.0.p.sds, in image pixels."""
+    import cv2
+
+    from images_to_sds import RECORD, records
+    from traffic import letterbox
+
+    board = {ts: RECORD.unpack(data[: RECORD.size]) for ts, data in records(workdir / "Detections.0.p.sds")}
+    names = [Path(n).name for n in (workdir / "CameraIn.0.txt").read_text().split()]
+    slot = {name: i * 100 for i, name in enumerate(names)}  # images_to_sds.py: 100 ms apart
+    out = []
+    for path, _ in items:
+        rec = board.get(slot.get(path.name, -1))
+        if rec is None:
+            sys.exit(f"{path.name}: no board result in {workdir}")
+        _, r, (px, py) = letterbox(cv2.imread(str(path)), size)
+        det = np.array([rec[4 + 6 * k : 10 + 6 * k] for k in range(rec[1])], np.float32).reshape(-1, 6)
+        det[:, [0, 2]] = (det[:, [0, 2]] - px) / r
+        det[:, [1, 3]] = (det[:, [1, 3]] - py) / r
+        out.append(det)
+    return out
+
+
+def evaluate(dets: list[np.ndarray], items, threshold: float) -> dict:
+    """AP50 over all images and precision / recall at `threshold` of detections (K, 6) in image pixels."""
+    import cv2
+
+    scored, n_gt = [], 0  # (score, is_true_positive)
+    tp_t = fp_t = 0
+    for det, (path, gt) in zip(dets, items):
+        h, w = cv2.imread(str(path)).shape[:2]
         g = np.concatenate([(gt[:, :2] - gt[:, 2:4] / 2), (gt[:, :2] + gt[:, 2:4] / 2)], 1) * [w, h, w, h]
         n_gt += len(g)
         det = det[np.argsort(-det[:, 4])]
@@ -98,17 +148,16 @@ def evaluate(run, items, size: int, threshold: float) -> dict:
 
 
 def quantized(size: int):
-    """The module as create_ai_layer.py quantizes it, before Vela."""
+    """The float detector and the int8 one as create_ai_layer.py quantizes it, before Vela."""
     import yaml
 
     import create_ai_layer
-    from traffic import get_traffic_methods
+    from traffic import runners
 
     mlops_file = ROOT / "ai_layer_traffic" / "cmsis-executorch.cbuild-mlops.yml"
     mlops = yaml.safe_load(mlops_file.read_text())["cbuild-mlops"]
     spec = create_ai_layer.compile_spec(mlops, mlops_file.parent)
-    (method,) = get_traffic_methods()
-    return method.module, create_ai_layer.quantize_method(spec, method)
+    return runners(lambda method: create_ai_layer.quantize_method(spec, method))
 
 
 def main() -> None:
@@ -116,6 +165,7 @@ def main() -> None:
     parser.add_argument("datasets", nargs="+", type=Path)
     parser.add_argument("--sizes", default=os.environ.get("YOLO_IMGSZ", "416"))
     parser.add_argument("--threshold", type=float, default=0.3)
+    parser.add_argument("--board", type=Path, help="a playback folder with the board's Detections.0.p.sds of the same images")
     args = parser.parse_args()
     import traffic
 
@@ -125,8 +175,13 @@ def main() -> None:
         os.environ["YOLO_IMGSZ"] = str(size)
         traffic.IMAGE_SIZE = size
         float_module, int8_module = quantized(size)
-        for name, run in (("float", float_module), ("int8", int8_module)):
-            r = evaluate(run, items, size, args.threshold)
+        # With --board every detector is cut as the board cuts it (score > 0.30, at most 16).
+        runs = [("float", lambda: detections(float_module, items, size, bool(args.board))),
+                ("int8", lambda: detections(int8_module, items, size, bool(args.board)))]
+        if args.board:
+            runs.append(("board", lambda: board_detections(args.board, items, size)))
+        for name, dets in runs:
+            r = evaluate(dets(), items, args.threshold)
             print(
                 f"{size:4d} {name:5s}  AP50 {r['ap50']:.3f}   at {args.threshold}: "
                 f"precision {r['precision']:.3f} recall {r['recall']:.3f}"
