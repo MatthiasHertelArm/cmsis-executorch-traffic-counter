@@ -135,9 +135,10 @@ in order:
 
    ```bash
    ./setup_venv.sh --recreate
-   cbuild setup cmsis-executorch.csolution.yml --active SSE-320-U85 --packs
+   cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7 --packs
    python3 create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
-   cbuild cmsis-executorch.csolution.yml --active SSE-320-U85
+   cbuild cmsis-executorch.csolution.yml --active AppKit-E7
+   cbuild cmsis-executorch.csolution.yml --active SSE-300-U55
    ```
 
    A changed operator set simply shows up in the regenerated

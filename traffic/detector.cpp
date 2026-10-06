@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The vehicle detector: model/traffic.py, exported by create_ai_layer.py
- * into ai_layer_traffic/. It returns, per anchor, the box distances and one
+ * into ai_layer/. It returns, per anchor, the box distances and one
  * score per vehicle class (int8). The CPU does what is left of the YOLO26
  * head: the best class of each anchor, the threshold, the distances of the
  * survivors turned into boxes. The one-to-one head of YOLO26 is NMS-free; an

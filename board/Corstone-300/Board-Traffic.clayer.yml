@@ -1,0 +1,79 @@
+# Copyright 2026 Arm Limited and/or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Corstone-300 (SSE-300) FVP board bring-up for the traffic counter
+# (traffic/traffic.cproject.yml): the Cortex-M55 with an Ethos-U55-256, the
+# NPU configuration of the Ensemble E7's HP core, so the AI layer of the
+# AppKit-E7 runs unchanged. What the FVP has not, the application leaves out:
+# no APP_HAS_CAMERA, APP_HAS_DISPLAY, APP_HAS_SDS or APP_HAS_JOYSTICK, so the
+# input is the test image (traffic/test_image.c). TRAFFIC_FRAMES frames go
+# through the detector and the tracker, each frame's detections are printed
+# over semihosting on the model's stdout, and exit() ends the simulation.
+#
+# Memory: the program with the 2.3 MB YOLO26n .pte and the test image, the
+# ExecuTorch pools, the NPU scratch and the input slots exceed the SRAMs, so
+# code and data run from the DDR4 (regions_SSE-300.h). The FVP does not model
+# memory timing; its NPU runs in fast mode (fvp_config.txt).
+layer:
+  type: Board
+  description: Corstone-300 FVP board setup for the traffic counter on the Ethos-U55
+  for-board: ARM::V2M-MPS3-SSE-300-FVP
+  for-device: ARM::SSE-300-MPS3
+
+  connections:
+    - connect: Corstone-300
+      provides:
+        - STDIN
+        - STDOUT
+        - STDERR
+        - Heap: 98304 # __HEAP_SIZE in regions_SSE-300.h
+
+  define:
+    - CMSIS_target_header: \"Corstone-300.h\"
+    - ETHOSU55
+    # The application's ExecuTorch pools and the RTX thread stacks (the
+    # E7 puts them in its SRAM0; here they go with the rest into the DDR4).
+    - APP_POOL_SECTION: \".bss.ai_pool\"
+    - APP_THREAD_STACK_SIZE: 0x8000
+    # The frames of the run on the test image (traffic/app_traffic.cpp).
+    - TRAFFIC_FRAMES: 3
+
+  packs:
+    - pack: ARM::CMSIS@^6.2.0
+    - pack: ARM::CMSIS-Compiler@^2.1.0
+    - pack: ARM::CMSIS-RTX@^5.9.1
+    - pack: ARM::ethos-u-core-driver@^1.26.2
+    - pack: ARM::V2M_MPS3_SSE_300_BSP@1.5.0
+
+  components:
+    - component: CMSIS:CORE
+
+    - component: CMSIS-Compiler:CORE
+    - component: CMSIS-Compiler:STDERR:Custom
+    - component: CMSIS-Compiler:STDIN:Custom
+    - component: CMSIS-Compiler:STDOUT:Custom
+
+    - component: Device:Definition
+    - component: Device:Startup&C Startup
+    # device_definition.c (Device:Definition) calls wait_us() of the Timeout driver.
+    - component: Device:Native Driver:SysCounter
+    - component: Device:Native Driver:SysTimer
+    - component: Device:Native Driver:Timeout
+
+    # RTX5: app_main runs in an RTX thread (main.c), as on the E7.
+    - component: CMSIS:RTOS2:Keil RTX5&Source
+    - component: CMSIS:OS Tick:SysTick
+
+    - component: Machine Learning:NPU Support:Ethos-U Driver&Generic U55
+
+  groups:
+    - group: Board
+      files:
+        - file: ./main.c
+        - file: ./main.h
+        - file: ./Corstone-300.h
+        - file: ./ethos_setup.c
+        - file: ./retarget_stdio.c
+
+  linker:
+    - regions: ./regions_SSE-300.h

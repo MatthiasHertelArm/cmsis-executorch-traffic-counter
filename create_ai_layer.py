@@ -85,7 +85,7 @@ def executorch_version(mlops_file: Path) -> str:
     pack_file = mlops_file.with_name(mlops_file.name.replace(".cbuild-mlops.yml", ".cbuild-pack.yml"))
     # After a version bump the lock file still lists the old pin as resolved
     # by its own selector: the csolution's pin decides (the lock file may be a
-    # link into the solution directory, see ai_layer_u55/).
+    # link into the solution directory).
     for csolution in pack_file.resolve().parent.glob("*.csolution.yml"):
         if pinned := re.search(rf"{re.escape(PACK)}@(\d+\.\d+\.\d+\S*)", csolution.read_text()):
             return pinned.group(1)
@@ -200,7 +200,7 @@ def export_program(spec) -> tuple[bytes, dict]:
 
     # Inputs stay the caller's buffers: without this the runtime plans memory
     # for every input and memcpys the caller's tensors into it on each call
-    # (672 kB per frame for the G-buffer). Outputs stay planned.
+    # (the 507 kB image of the traffic counter). Outputs stay planned.
     from executorch.exir.passes import MemoryPlanningPass
 
     program = edge.to_executorch(

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Stand-in for the FVP_Corstone_SSE-320 executable, referenced from the
-# `debugger: model:` node of the SSE-320-U85 target-set. The CMSIS Solution
+# Stand-in for the FVP_Corstone_SSE-300_Ethos-U55 executable, referenced from
+# the `debugger: model:` node of the SSE-300-U55 target-set. The CMSIS Solution
 # extension runs it both as the "CMSIS Run" task and as the gdbtarget debug
 # server, in the latter case with
 #
 #   -D --plugin $AVH_FVP_PLUGINS/GDBServer.so -C GDBServer.port=3333 \
-#      -f board/Corstone-320/fvp_config.txt --simlimit 60 -a <application>.hex
+#      -f board/Corstone-300/fvp_config.txt --simlimit 600 -a <application>.hex
 #
 # It does two things the bare model command cannot:
 #
@@ -16,10 +16,10 @@
 #     the GDB port forwarded to the host so arm-none-eabi-gdb can reach it.
 #
 # On Linux it just execs the real model. On Windows, where the extension cannot
-# run a bash script, point the csolution's `model:` at FVP_Corstone_SSE-320.exe.
+# run a bash script, point the csolution's `model:` at FVP_Corstone_SSE-300_Ethos-U55.exe.
 set -euo pipefail
 
-MODEL="${FVP_MODEL:-FVP_Corstone_SSE-320}"
+MODEL="${FVP_MODEL:-FVP_Corstone_SSE-300_Ethos-U55}"
 FVP_VERSION="${FVP_VERSION:-11.32.23}"          # keep in sync with vcpkg-configuration.json
 IMAGE="${FVP_IMAGE:-cmsis-fvp:${FVP_VERSION}}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

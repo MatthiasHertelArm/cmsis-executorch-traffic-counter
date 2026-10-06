@@ -25,18 +25,32 @@
  * counts, the latest result and the frame timing are in the global
  * `traffic_status`; `traffic_reset_counts` set to 1 by the debugger zeroes
  * the tallies.
+ *
+ * On the Corstone-300 FVP (target-type SSE-300-U55) there is no camera,
+ * panel, joystick or SDS: the board layer leaves out their APP_HAS_* defines
+ * and sets TRAFFIC_FRAMES, so the test image goes through the detector and
+ * the tracker that many times, each frame's detections go to the console,
+ * and exit() ends the simulation.
  */
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "RTE_Components.h"
 #include CMSIS_device_header
 
 #include "cmsis_os2.h"
+// The Ensemble's Secure Enclave powers and clocks the SRAM1; the FVP has
+// neither, nor the Alif services component.
+#if __has_include("se_services_port.h")
+#define TRAFFIC_SE_SERVICES 1
 #include "se_services_port.h"
 #include "services_lib_api.h"
+#else
+#define TRAFFIC_SE_SERVICES 0
+#endif
 
 #include "detector.h"
 #include "image.h"
@@ -141,6 +155,9 @@ uint8_t* const g_framebuffer[2] = {g_framebuffer0, g_framebuffer1};
 // the SDS input buffer. Power and clock it through the Secure Enclave before
 // any use; a store to an unpowered SRAM hangs the bus.
 bool sram1_power_on() {
+#if !TRAFFIC_SE_SERVICES
+  return true;
+#else
   uint32_t error = 0;
   if (SERVICES_power_memory_req(se_services_s_handle, POWER_MEM_SRAM_0_ENABLE | POWER_MEM_SRAM_1_ENABLE, &error) !=
           SERVICES_REQ_SUCCESS ||
@@ -153,6 +170,7 @@ bool sram1_power_on() {
     return false;
   }
   return true;
+#endif
 }
 
 inline uint32_t cycles() { return DWT->CYCCNT; }
@@ -720,6 +738,23 @@ extern "C" int app_main(void) {
       for (int x = 0; x < 52; ++x) memcpy(&traffic_thumbnail[(y * 52 + x) * 3], &input[((y * 8) * kSize + x * 8) * 3], 3);
 #ifdef APP_HAS_CAMERA
     if (source == kCamera) camera_input_done();
+#endif
+#ifdef TRAFFIC_FRAMES
+    // The fixed run of the FVP target: every frame's detections, then the
+    // result, and exit() (semihosting SYS_EXIT) stops the model.
+    printf("frame %lu: %lu vehicle%s, detect %lu us (NPU %lu us)\n", static_cast<unsigned long>(frame),
+           static_cast<unsigned long>(det.count), det.count == 1 ? "" : "s", static_cast<unsigned long>(traffic_status.detect_us),
+           static_cast<unsigned long>(det.npu_us));
+    for (uint32_t i = 0; i < det.count; ++i) {
+      const detection_t& d = det.det[i];
+      printf("  %-10s %.2f  x1 %.0f y1 %.0f x2 %.0f y2 %.0f\n", DETECTOR_CLASS_NAMES[d.cls], static_cast<double>(d.score),
+             static_cast<double>(d.x1), static_cast<double>(d.y1), static_cast<double>(d.x2), static_cast<double>(d.y2));
+    }
+    if (frame + 1 >= TRAFFIC_FRAMES) {
+      const bool pass = det.count > 0;
+      printf("Test_result: %s\n", pass ? "PASS" : "FAIL");
+      exit(pass ? 0 : 1);
+    }
 #endif
     if (frame % 100 == 0) {
       const traffic_counts_t* c = tracker_counts();

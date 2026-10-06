@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
-"""Bridge SEGGER RTT channel 1 of the DevKit-E8 to a TCP socket for SDSIO-Server.
+"""Bridge SEGGER RTT channel 1 of the board to a TCP socket for SDSIO-Server.
 
 J-Link Commander's built-in RTT telnet server (port 19021) polls slowly and
 dropped bytes on this board, so this script drives the J-Link DLL through
@@ -9,12 +9,11 @@ pylink directly: it polls the RTT up buffer in a tight loop and forwards the
 bytes to one TCP client, and writes what the client sends into the RTT down
 buffer. Run SDSIO-Server against it in connect mode:
 
-    python tools/sdsio_rtt_bridge.py --device AE822FA0E5597LS0_M55_HP --rtt-addr 0x20000e70
+    python tools/sdsio_rtt_bridge.py --device AE722F80F55D5LS_M55_HP --rtt-addr <_SEGGER_RTT>
     python sdsio-server.py socket --port 5050 --connect --workdir recordings
 
-The target should be halted at its reset vector when the bridge starts
-(pyocd commander --cbuild-run out/cmsis-executorch+DevKit-E8.cbuild-run.yml -c "reset halt");
-the bridge resumes it once SDSIO-Server is connected, so that the runner's
+The target should be halted at its reset vector when the bridge starts;
+the bridge resumes it once SDSIO-Server is connected, so that the application's
 sdsOpen (5 s timeout) finds the server. --no-restart skips the resume.
 """
 
@@ -47,7 +46,7 @@ def log(msg: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--device", required=True, help="J-Link device name, e.g. AE822FA0E5597LS0_M55_HP")
+    ap.add_argument("--device", required=True, help="J-Link device name, e.g. AE722F80F55D5LS_M55_HP")
     ap.add_argument("--rtt-addr", type=lambda x: int(x, 0), required=True, help="address of _SEGGER_RTT (linker map)")
     ap.add_argument("--channel", type=int, default=1, help="RTT up/down buffer index used by SDSIO (default 1)")
     ap.add_argument("--port", type=int, default=5050, help="TCP port for SDSIO-Server (default 5050)")

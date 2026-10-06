@@ -154,7 +154,7 @@ def quantized(size: int):
     import create_ai_layer
     from traffic import runners
 
-    mlops_file = ROOT / "ai_layer_traffic" / "cmsis-executorch.cbuild-mlops.yml"
+    mlops_file = ROOT / "cmsis-executorch.cbuild-mlops.yml"  # from cbuild setup --active AppKit-E7
     mlops = yaml.safe_load(mlops_file.read_text())["cbuild-mlops"]
     spec = create_ai_layer.compile_spec(mlops, mlops_file.parent)
     return runners(lambda method: create_ai_layer.quantize_method(spec, method))

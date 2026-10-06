@@ -11,15 +11,18 @@
             //     "GDBServer: Listening ... port=3333" banner instead.
             //   "portDetectionTimeout" -- the first run on macOS builds the
             //     Docker image (see .vscode/fvp.sh).
+            // and one model option: GDBServer.shutdown_on_disconnect=1, or the
+            // model (its container on macOS) outlives the debug session once
+            // the application has exited.
             // To re-sync after changing target-type or build-type: set
             // "updateConfiguration" to "auto", run "CMSIS: Update Debug Tasks
-            // and Launch Configurations", then re-apply the three fields above
-            // and set it back to "manual".
+            // and Launch Configurations", then re-apply the fields above and
+            // set it back to "manual".
             "name": "Arm-FVP@GDB (launch)",
             "type": "gdbtarget",
             "request": "launch",
             "cwd": "${workspaceFolder}/",
-            "program": "out/cmsis-executorch/SSE-320-U85/Debug/cmsis-executorch.axf",
+            "program": "out/traffic/SSE-300-U55/Release/traffic.axf",
             "gdb": "arm-none-eabi-gdb",
             "auxiliaryGdb": false,
             "initCommands": [
@@ -35,12 +38,14 @@
                     "${env:AVH_FVP_PLUGINS}/GDBServer.so",
                     "-C",
                     "GDBServer.port=3333",
+                    "-C",
+                    "GDBServer.shutdown_on_disconnect=1",
                     "-f",
-                    "board/Corstone-320/fvp_config.txt",
+                    "board/Corstone-300/fvp_config.txt",
                     "--simlimit",
-                    "60",
+                    "600",
                     "-a",
-                    "out/cmsis-executorch/SSE-320-U85/Debug/cmsis-executorch.hex"
+                    "out/traffic/SSE-300-U55/Release/traffic.hex"
                 ],
                 "port": "",
                 "serverPortRegExp": "GDBServer: Listening .*port=([0-9]+)",

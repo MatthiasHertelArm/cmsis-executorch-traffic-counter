@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The vehicle detector of the traffic counter: YOLO26n on the Ethos-U55 (the
- * `detect` method of model/traffic.py in ai_layer_traffic/) and the rest of
+ * `detect` method of model/traffic.py in ai_layer/) and the rest of
  * its head on the CPU: the best class of each anchor, the threshold, the boxes.
  */
 #ifndef TRAFFIC_DETECTOR_H_

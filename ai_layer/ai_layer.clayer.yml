@@ -3,7 +3,7 @@
 # model/model.py or the csolution's mlops: node.
 layer:
   type: AI
-  description: NPU render, the tensor stages of a 3D pipeline (vertex transform, deferred shading) for Ethos-U85
+  description: YOLO26n vehicle detector of the traffic counter for the Ethos-U55 of the Ensemble E7's M55-HP
 
   packs:
     - pack: PyTorch::ExecuTorch@1.5.1
@@ -21,7 +21,7 @@ layer:
     - component: Machine Learning:ExecuTorch:Backend EthosU
 
   groups:
-    - group: NpuRender
+    - group: TrafficVehicles
       files:
         - file: ./model_pte.c
         - file: ./model_pte.h

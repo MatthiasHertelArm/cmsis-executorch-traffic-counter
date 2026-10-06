@@ -1,12 +1,17 @@
 # Copyright 2026 Arm Limited and/or its affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
-# A minimal ExecuTorch-on-Ethos-U85 example for the Corstone-320 (SSE-320) FVP
-# and the Alif Ensemble E8 DevKit (target-type DevKit-E8). Three steps build it:
+# Traffic counter with ExecuTorch on the Ethos-U55: Ultralytics YOLO26n finds
+# the vehicles in each frame, a tracker counts them as they cross a line
+# (traffic/traffic.cproject.yml, documentation/traffic-counter.md). Two
+# targets with the same Cortex-M55 + Ethos-U55-256 pair and the same AI layer:
+# the Alif Ensemble E7 AppKit (target-type AppKit-E7), and the Corstone-300
+# FVP (target-type SSE-300-U55), which runs the detector on the test image
+# without a board. Three steps build it:
 #
-#   cbuild setup cmsis-executorch.csolution.yml --active SSE-320-U85
+#   cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7
 #   python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml
-#   cbuild cmsis-executorch.csolution.yml --active SSE-320-U85
+#   cbuild cmsis-executorch.csolution.yml --active AppKit-E7
 #
 # The `mlops:` node below makes `cbuild setup` emit the *.cbuild-mlops.yml;
 # create_ai_layer.py reads the NPU and Vela settings from it, exports the model
@@ -22,147 +27,18 @@ solution:
     # to load. `cbuild setup --packs` fetches it from the public index.
     - pack: PyTorch::ExecuTorch@1.5.1
     - pack: ARM::CMSIS
-    - pack: ARM::CMSIS-NN
     - pack: ARM::CMSIS-Compiler
-    - pack: ARM::Cortex_DFP
-    # BSP of the Corstone-320 FVP target. The layer lists it too; naming it
-    # here keeps the mlops: simulator target resolvable when another
-    # target-type is active.
-    - pack: ARM::SSE_320_BSP@1.0.0
-    # DFP + BSP of the Alif Ensemble E8 DevKit target.
+    # BSP of the Corstone-300 FVP target. The layer lists it too; naming it
+    # here keeps the mlops: simulator target resolvable when the AppKit-E7 is
+    # the active target-type.
+    - pack: ARM::V2M_MPS3_SSE_300_BSP@1.5.0
+    # DFP + BSP of the Alif Ensemble E7 AppKit, and the Vela configuration
+    # of its NPUs (ensemble_vela.ini).
     - pack: AlifSemiconductor::Ensemble@^2.2.0-0
 
   target-types:
-    # Corstone-320 with an Ethos-U85 NPU, simulated on the Arm FVP.
-    - type: SSE-320-U85
-      board: SSE-320
-      device: SSE-320-FVP
-      variables:
-        - Board-Layer: $SolutionDir()$/board/Corstone-320/Board-U85.clayer.yml
-        - Quake-Board-Layer: $SolutionDir()$/board/Corstone-320/Board-U85.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
-      target-set:
-        - set:
-          images:
-            - project-context: cmsis-executorch.Debug
-          debugger:
-            name: Arm-FVP
-            # The model is its own GDB server (plugins/GDBServer.so, MDK FVP
-            # models 11.32.23+). fvp.sh resolves that plugin when VS Code was
-            # not started from a `vcpkg activate` shell, line-buffers the
-            # model's stdout so the debug adapter sees the "Listening" banner,
-            # and on macOS runs the model in Docker (Arm ships no macOS build).
-            # On Windows point this straight at FVP_Corstone_SSE-320.exe.
-            model: ${workspaceFolder}/.vscode/fvp.sh
-            config-file: board/Corstone-320/fvp_config.txt
-            args: "--simlimit 60"
-        # Quake, headless (quake/quake.cproject.yml): the model preloads the
-        # pak image into DDR, where platform/port_fvp.c expects it.
-        - set: quake
-          images:
-            - project-context: quake.Debug
-          debugger:
-            name: Arm-FVP
-            model: ${workspaceFolder}/.vscode/fvp.sh
-            config-file: board/Corstone-320/fvp_config.txt
-            args: "--simlimit 600 --data
-              mps4_board.subsystem.cpu0=quake/data/id1/pak0.pak@0x90000000"
-
-    # Alif Ensemble E8 DevKit: Cortex-M55 high-performance core with the
-    # Ethos-U85 NPU, on real hardware through the on-board J-Link (SWD).
-    # Program the debug stubs with SETOOLS once before the first debug session;
-    # see README.md.
-    - type: DevKit-E8
-      board: Alif Semiconductor::DevKit-E8
-      device: Alif Semiconductor::AE822FA0E5597LS0:M55_HP
-      variables:
-        - Board-Layer: $SolutionDir()$/board/DevKit-E8/Board-U85.clayer.yml
-        # The board layer of the Quake project: adds the HyperRAM and the OSPI
-        # flash in XIP mode and has a scatter file of its own.
-        - Quake-Board-Layer: $SolutionDir()$/board/DevKit-E8/Board-Quake.clayer.yml
-        # The cat detector (yolo/yolo.cproject.yml): no SDS, the console in a
-        # log buffer the debugger reads, the MRAM code region enlarged for the
-        # 2.3 MB YOLO26n program.
-        - Yolo-Board-Layer: $SolutionDir()$/board/DevKit-E8/Board-Yolo.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
-      target-set:
-        - set:
-          images:
-            - project-context: quake.Debug
-          debugger:
-            name: J-Link Server
-            # SWD at 4 MHz is the pack's <debugProbe> setting for DevKit-E8.
-            # Alif's examples use JTAG at 1 MHz, but the generated "CMSIS Load"
-            # task then blocks on JLinkExe's interactive JTAG-chain prompt, and
-            # the DPv3 stays in SWD mode once anything has used SWD until the
-            # board is power-cycled, so JTAG connects fail with "TDO is constant high".
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-        # Quake (quake/quake.cproject.yml); the pak image is programmed into
-        # the OSPI flash separately, see documentation/npu-quake.md.
-        - set: quake
-          images:
-            - project-context: quake.Debug
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-        # The YOLO26n cat detector (yolo/yolo.cproject.yml), see
-        # documentation/yolo-cats.md.
-        - set: yolo
-          images:
-            - project-context: yolo.Release
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-
-    # Alif Ensemble E8 AppKit (AppKit-E8-AIML): the same SoC in another package,
-    # the same 480x800 panel, a 64 MB APS512XXN PSRAM in place of the HyperRAM.
-    # The board layers in board/AppKit-E8 reuse the DevKit-E8's board files.
-    - type: AppKit-E8
-      board: Alif Semiconductor::AppKit-E8-AIML
-      device: Alif Semiconductor::AE822FA0E5597BS0:M55_HP
-      variables:
-        - Board-Layer: $SolutionDir()$/board/AppKit-E8/Board-U85.clayer.yml
-        - Quake-Board-Layer: $SolutionDir()$/board/AppKit-E8/Board-Quake.clayer.yml
-        - Yolo-Board-Layer: $SolutionDir()$/board/AppKit-E8/Board-Yolo.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
-      target-set:
-        - set:
-          images:
-            - project-context: cmsis-executorch.Debug
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-        - set: quake
-          images:
-            - project-context: quake.Release
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-        # The YOLO26n cat detector (yolo/yolo.cproject.yml), see
-        # documentation/yolo-cats.md.
-        - set: yolo
-          images:
-            - project-context: yolo.Release
-          debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HP
-
     # Alif Ensemble E7 AppKit (AK-E7-AIML, Gen 2): the Cortex-M55 HP core with
-    # its Ethos-U55-256, the same 480x800 panel, an MT9M114 camera module. The
-    # traffic counter (traffic/traffic.cproject.yml, documentation/traffic-counter.md);
-    # its AI layer is ai_layer_traffic/ (YOLO26n compiled for the U55). The
+    # its Ethos-U55-256, the 480x800 panel, an MT9M114 camera module. The
     # Secure Enclave has to boot the HP core from its MRAM region:
     # .alif/M55_HP_mram_cfg_e7.json, the "Install M55_HP debug stubs (AppKit-E7)" task.
     - type: AppKit-E7
@@ -170,45 +46,52 @@ solution:
       device: Alif Semiconductor::AE722F80F55D5LS:M55_HP
       variables:
         - Board-Layer: $SolutionDir()$/board/AppKit-E7/Board-Traffic.clayer.yml
-        - Traffic-Board-Layer: $SolutionDir()$/board/AppKit-E7/Board-Traffic.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer_traffic/ai_layer.clayer.yml
+        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
       target-set:
         - set:
           images:
             - project-context: traffic.Release
           debugger:
             name: J-Link Server
+            # SWD at 4 MHz is the pack's <debugProbe> setting for the Ensemble
+            # kits. With JTAG the generated "CMSIS Load" task blocks on
+            # JLinkExe's interactive JTAG-chain prompt.
             protocol: swd
             clock: 4000000
             start-pname: M55_HP
 
-    # The same board, the other Cortex-M55: the high-efficiency core (160 MHz,
-    # 256 kB TCMs) with the Ethos-U55 (128 MACs) that is local to it. Quake only;
-    # its AI layer is ai_layer_u55/ (what the Ethos-U55 runs whole: nearest
-    # upscale, no bloom). The Secure Enclave has to boot this core from its MRAM
-    # region: .alif/M55_HE_mram_cfg.json, see documentation/npu-quake.md.
-    - type: AppKit-E8-HE
-      board: Alif Semiconductor::AppKit-E8-AIML
-      device: Alif Semiconductor::AE822FA0E5597BS0:M55_HE
+    # Corstone-300 (SSE-300) with a Cortex-M55 and an Ethos-U55-256, the NPU
+    # configuration of the E7's HP core, simulated on the Arm FVP. No camera,
+    # panel or SDS: the traffic counter runs the test image through the
+    # detector and the tracker for a few frames, prints the detections and
+    # ends the simulation (board/Corstone-300/Board-Traffic.clayer.yml).
+    - type: SSE-300-U55
+      board: ARM::V2M-MPS3-SSE-300-FVP
+      device: ARM::SSE-300-MPS3
       variables:
-        - Board-Layer: $SolutionDir()$/board/AppKit-E8-HE/Board-Quake.clayer.yml
-        - Quake-Board-Layer: $SolutionDir()$/board/AppKit-E8-HE/Board-Quake.clayer.yml
-        - AI-Layer: $SolutionDir()$/ai_layer_u55/ai_layer.clayer.yml
+        - Board-Layer: $SolutionDir()$/board/Corstone-300/Board-Traffic.clayer.yml
+        - AI-Layer: $SolutionDir()$/ai_layer/ai_layer.clayer.yml
       target-set:
         - set:
           images:
-            - project-context: quake.Release
+            - project-context: traffic.Release
           debugger:
-            name: J-Link Server
-            protocol: swd
-            clock: 4000000
-            start-pname: M55_HE
+            name: Arm-FVP
+            # The model is its own GDB server (plugins/GDBServer.so, MDK FVP
+            # models 11.32.23+). fvp.sh resolves that plugin when VS Code was
+            # not started from a `vcpkg activate` shell, line-buffers the
+            # model's stdout so the debug adapter sees the "Listening" banner,
+            # and on macOS runs the model in Docker (Arm ships no macOS build).
+            # On Windows point this straight at FVP_Corstone_SSE-300_Ethos-U55.exe.
+            model: ${workspaceFolder}/.vscode/fvp.sh
+            config-file: board/Corstone-300/fvp_config.txt
+            args: "--simlimit 600"
 
   misc:
-    # CMSIS-Toolbox 2.14.1 passes -mfpu=fpv5-sp-d16 to Clang for the Cortex-M85
-    # and M55, a single-precision FPU on cores with a double-precision one and MVE;
+    # CMSIS-Toolbox 2.14.1 passes -mfpu=fpv5-sp-d16 to Clang for the Cortex-M55,
+    # a single-precision FPU on a core with a double-precision one and MVE;
     # LLVM crashes on some kernels with that combination. The later option
-    # wins, so name the M85's FPU explicitly (newer toolboxes leave it to -mcpu).
+    # wins, so name the FPU explicitly (newer toolboxes leave it to -mcpu).
     - for-compiler: CLANG
       C-CPP:
         - -mfpu=fp-armv8-fullfp16-d16
@@ -227,39 +110,30 @@ solution:
       optimize: speed
 
   projects:
-    - project: ./cmsis-executorch.cproject.yml
-    # Quake on the same pipeline; its source is fetched by quake/fetch_quake.py.
-    - project: ./quake/quake.cproject.yml
-    # The YOLO26n cat detector, on the Alif boards.
-    - project: ./yolo/yolo.cproject.yml
-      for-context:
-        - +DevKit-E8
-        - +AppKit-E8
-    # The traffic counter, on the AppKit-E7 (Ethos-U55).
     - project: ./traffic/traffic.cproject.yml
-      for-context:
-        - +AppKit-E7
 
   # MLOps information: exported to cmsis-executorch.cbuild-mlops.yml by
-  # `cbuild setup ... --active SSE-320-U85`. Retarget the NPU here and
-  # create_ai_layer.py picks it up on its next run.
+  # `cbuild setup ... --active AppKit-E7`. Retarget the NPU here and
+  # create_ai_layer.py picks it up on its next run. The FVP's Ethos-U55-256
+  # runs the same command stream; Vela's system configuration only steers the
+  # scheduling for the E7's memories.
   # https://open-cmsis-pack.github.io/cmsis-toolbox/build-overview/#mlops-information
   mlops:
-    description: NPU render, the tensor stages of a 3D pipeline (vertex transform,
-      deferred shading) for Ethos-U85
+    description: YOLO26n vehicle detector of the traffic counter for the Ethos-U55
+      of the Ensemble E7's M55-HP
     npu:
-      type: Ethos-U85 # explicit: the Ensemble pack lists an Ethos-U55 first
+      type: Ethos-U55
     vela:
       # With the Ensemble pack in the solution, cbuild setup copies its Vela
       # configuration to .cmsis/ensemble_vela.ini and emits it, together with
-      # --accelerator-config ethos-u85-256, for both targets. These names
-      # come from that file (the FVP's Ethos_U85_SYS_DRAM_Mid is not in it).
-      system: Ethos_U85_SRAM_MRAM
+      # --accelerator-config ethos-u55-256. RTSS_HP_SRAM_MRAM is the HP core's
+      # NPU in that file: the scratch in the SRAM, the weights in the MRAM.
+      system: RTSS_HP_SRAM_MRAM
       memory: Shared_Sram
     model:
       clayer: $AI-Layer$
-      name: NpuRender
+      name: TrafficVehicles
     hardware:
-      target: DevKit-E8 # named explicitly: the released 2.14.1 detects no hardware target
+      target: AppKit-E7 # named explicitly: the released 2.14.1 detects no hardware target
     simulator:
-      target: SSE-320-U85
+      target: SSE-300-U55

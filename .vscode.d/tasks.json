@@ -21,7 +21,11 @@
             "windows": {
                 "command": ".\\setup_venv.bat"
             },
-            "args": ["--uv", "--python", "${input:setupPythonVersion}"],
+            "args": [
+                "--uv",
+                "--python",
+                "${input:setupPythonVersion}"
+            ],
             "options": {
                 "cwd": "${workspaceFolder}"
             },
@@ -29,10 +33,13 @@
         },
         {
             "label": "Create AI layer",
-            "detail": "Export model/model.py for the NPU in cmsis-executorch.cbuild-mlops.yml and write ai_layer/ (run a CMSIS build or 'cbuild setup' first)",
+            "detail": "Export model/traffic.py for the NPU in cmsis-executorch.cbuild-mlops.yml and write ai_layer/ (run a CMSIS build or 'cbuild setup' first)",
             "type": "shell",
             "command": "python3",
-            "args": ["create_ai_layer.py", "cmsis-executorch.cbuild-mlops.yml"],
+            "args": [
+                "create_ai_layer.py",
+                "cmsis-executorch.cbuild-mlops.yml"
+            ],
             "windows": {
                 "command": "python"
             },
@@ -42,117 +49,8 @@
             "problemMatcher": []
         },
         {
-            "label": "Alif: Install M55_HP debug stubs (DevKit-E8, single core configuration)",
-            "detail": "Programs the ATOC/MRAM stubs with Alif SETOOLS so J-Link can load and debug the M55_HP core. Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
-            "type": "shell",
-            "command": [
-                "cp './.alif/M55_HP_mram_cfg.json' '${config:alif.setools.root}/build/config/M55_HP_mram_cfg.json';",
-                "cp './.alif/M55_HP_mram_stub.bin' '${config:alif.setools.root}/build/images/M55_HP_mram_stub.bin';",
-                "cd '${config:alif.setools.root}';",
-                "./app-gen-toc -f 'build/config/M55_HP_mram_cfg.json';",
-                "./app-write-mram -p ${input:discoverCOM};"
-            ],
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "powershell.exe",
-                        "args": [
-                            "-Command"
-                        ]
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-c"
-                        ]
-                    }
-                }
-            },
-            "osx": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-c"
-                        ]
-                    }
-                }
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Alif: Install M55_HE debug stubs (AppKit-E8-HE, single core configuration)",
-            "detail": "Programs the ATOC/MRAM stubs with Alif SETOOLS so the M55_HE core boots from MRAM 0x80000000 and J-Link can load and debug it (the M55_HP gets a TCM stub). Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
-            "type": "shell",
-            "command": [
-                "cp './.alif/M55_HE_mram_cfg.json' '${config:alif.setools.root}/build/config/M55_HE_mram_cfg.json';",
-                "cp './.alif/M55_HE_mram_stub.bin' '${config:alif.setools.root}/build/images/M55_HE_mram_stub.bin';",
-                "cd '${config:alif.setools.root}';",
-                "./tools-config -p 'E8 (AE822FA0E5597BS0) - 5.5 MRAM / 9.75 SRAM';",
-                "./app-gen-toc -f 'build/config/M55_HE_mram_cfg.json';",
-                "./app-write-mram -p ${input:discoverCOM};"
-            ],
-            "windows": {
-                "options": {
-                    "shell": {
-                        "executable": "powershell.exe",
-                        "args": [
-                            "-Command"
-                        ]
-                    }
-                }
-            },
-            "linux": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-c"
-                        ]
-                    }
-                }
-            },
-            "osx": {
-                "options": {
-                    "shell": {
-                        "executable": "/bin/bash",
-                        "args": [
-                            "-c"
-                        ]
-                    }
-                }
-            },
-            "problemMatcher": []
-        },
-        {
-            "label": "Alif: Install M55_HP debug stubs (AppKit-E8, single core configuration)",
-            "detail": "As the DevKit-E8 task, for the AppKit's device (AE822FA0E5597BS0): a boot table built for the DevKit's part is skipped by the Secure Enclave. Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
-            "type": "shell",
-            "command": [
-                "cp './.alif/M55_HP_mram_cfg.json' '${config:alif.setools.root}/build/config/M55_HP_mram_cfg.json';",
-                "cp './.alif/M55_HP_mram_stub.bin' '${config:alif.setools.root}/build/images/M55_HP_mram_stub.bin';",
-                "cd '${config:alif.setools.root}';",
-                "./tools-config -p 'E8 (AE822FA0E5597BS0) - 5.5 MRAM / 9.75 SRAM';",
-                "./app-gen-toc -f 'build/config/M55_HP_mram_cfg.json';",
-                "./app-write-mram -p ${input:discoverCOM};"
-            ],
-            "options": {
-                "shell": {
-                    "executable": "/bin/bash",
-                    "args": [
-                        "-c"
-                    ]
-                }
-            },
-            "problemMatcher": []
-        },
-        {
             "label": "Alif: Install M55_HP debug stubs (AppKit-E7, single core configuration)",
-            "detail": "As the DevKit-E8 task, for the AppKit-E7's device (AE722F80F55D5LS); the traffic counter's HP core boots from the MRAM. The AppKit-E7 is silicon revision B4 (tools-config -p resets it to A0, and every later step then says 'Revision is invalid'). Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
+            "detail": "Programs the ATOC/MRAM stubs with Alif SETOOLS for the AppKit-E7's device (AE722F80F55D5LS), so that the Secure Enclave boots the HP core from its MRAM region and J-Link can load and debug it. The AppKit-E7 is silicon revision B4 (tools-config -p resets it to A0, and every later step then says 'Revision is invalid'). Set SW4 to SEUART, set 'alif.setools.root' in your VS Code settings.",
             "type": "shell",
             "command": [
                 "cp './.alif/M55_HP_mram_cfg_e7.json' '${config:alif.setools.root}/build/config/M55_HP_mram_cfg_e7.json';",

@@ -1,0 +1,35 @@
+# Parameters:
+# instance.parameter=value       #(type, mode) default = 'def value' : description : [min..max]
+#------------------------------------------------------------------------------
+ethosu.num_macs=256                                   # (int   , init-time) default = '0x80'   : Number of 8x8 MACs performed per cycle (32, 64, 128, or 256). : [0x20:0x100]
+                                                      # NOTE: must match the Vela target the model was compiled for:
+                                                      # --accelerator-config ethos-u55-256 in cmsis-executorch.cbuild-mlops.yml
+                                                      # (the E7's HP core NPU), otherwise the command stream is rejected
+                                                      # at runtime ("npu.macs_per_cc != optimizer.macs_per_cc").
+ethosu.extra_args=--fast                              # (string, init-time) default = ''       : To activate fast processing mode, which significantly improves the performance of the model, set this parameter to "--fast". In fast mode, NPU performance counters are not representative of counters on real hardware.
+                                                      # NOTE: the FVP times nothing like the board anyway; fast mode
+                                                      # makes a YOLO26n frame take seconds instead of minutes.
+cpu0.INITSVTOR=0x70000000                             # (int   , init-time) default = '0x10000000' : Secure vector-table offset at reset
+mps3_board.sse300.iotss3_systemcontrol.INITSVTOR_RST=0x70000000  # (int, init-time) default = '0x10000000' : Reset int32_t for INITSVTOR. Should match cpu<i>.INITSVTOR
+                                                      # NOTE: the application, its vector table (__Vectors) first, is
+                                                      # linked to the DDR4 at 0x70000000 (__ROM0_BASE in regions_SSE-300.h),
+                                                      # but the FVP default points at the ITCM, where nothing is loaded.
+                                                      # The first boot works anyway because the ELF loader sets the PC --
+                                                      # but any debugger reset reboots from INITSVTOR and fetches a garbage
+                                                      # MSP/PC. Pin both to the real vector table so resets survive.
+cpu0.semihosting-enable=1                             # (bool  , init-time) default = '0'      : Enable semihosting SVC traps
+                                                      # NOTE: stdio is retargeted to semihosting (board/Corstone-300/
+                                                      # retarget_stdio.c); the FVP serves it directly on its stdout,
+                                                      # and the application's exit() stops the model.
+mps3_board.telnetterminal0.quiet=1                    # (bool  , init-time) default = '0'      : Avoid output on stdout/stderr
+mps3_board.telnetterminal0.start_telnet=0             # (bool  , init-time) default = '1'      : Start telnet if nothing connected
+mps3_board.telnetterminal1.quiet=1                    # (bool  , init-time) default = '0'      : Avoid output on stdout/stderr
+mps3_board.telnetterminal1.start_telnet=0             # (bool  , init-time) default = '1'      : Start telnet if nothing connected
+mps3_board.telnetterminal2.quiet=1                    # (bool  , init-time) default = '0'      : Avoid output on stdout/stderr
+mps3_board.telnetterminal2.start_telnet=0             # (bool  , init-time) default = '1'      : Start telnet if nothing connected
+mps3_board.telnetterminal5.quiet=1                    # (bool  , init-time) default = '0'      : Avoid output on stdout/stderr
+mps3_board.telnetterminal5.start_telnet=0             # (bool  , init-time) default = '1'      : Start telnet if nothing connected
+mps3_board.uart0.out_file=-                           # (string, init-time) default = ''       : Output file to hold data written by the UART (use '-' to send all output to stdout)
+mps3_board.uart0.unbuffered_output=1                  # (bool  , init-time) default = '0'      : Unbuffered output
+mps3_board.visualisation.disable-visualisation=1      # (bool  , init-time) default = '0'      : Enable/disable visualisation
+#------------------------------------------------------------------------------

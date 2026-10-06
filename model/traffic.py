@@ -2,29 +2,30 @@
 # SPDX-License-Identifier: Apache-2.0
 """Vehicle detection with Ultralytics YOLO26n on the Ethos-U55, for the traffic counter.
 
-The same cut of YOLO26n as model/yolo.py (the NMS-free one-to-one head, the
-network up to the raw head outputs on the NPU, the threshold and the box
-decode on the CPU), with the classification branch ending in the vehicle
-classes of COCO instead of the cat alone:
+YOLO26n cut at its NMS-free one-to-one head (model/yolo.py): the network up
+to the raw head outputs on the NPU, the threshold and the box decode on the
+CPU, with the classification branch ending in the vehicle classes of COCO:
 
   image  int8 (1, S, S, 3)  RGB in [0, 1], interleaved
   -> box int8 (1, N, 4)     left, top, right, bottom distances
                             from each anchor, in anchor strides
   -> cls int8 (1, N, C)     sigmoid score per class, C = len(CLASSES)
 
-By default (TRAFFIC_ATTENTION=cpu) that is three NPU methods, stem, mid and
-head, with the two attention cores on the CPU in between (see Split below);
-TRAFFIC_ATTENTION=npu exports it as the single method `detect`.
+With the fine-tuned weights (YOLO26n without its attention blocks, see
+WEIGHTS below) that is the single method `detect`. With the COCO-pretrained
+yolo26n.pt and its two attention blocks it is, by default
+(TRAFFIC_ATTENTION=cpu), three NPU methods, stem, mid and head, with the
+attention cores on the CPU in between (see Split below);
+TRAFFIC_ATTENTION=npu exports that as the single method `detect` too.
 
 The N anchors are the cells of the stride 8, 16 and 32 maps, row by row,
 stride 8 first. The CPU (traffic/detector.cpp) takes the best class of each
 anchor, thresholds it and turns the distances into boxes; traffic/tracker.c
 follows the boxes from frame to frame and counts them across a line.
 
-The Ethos-U55 (the E7's NPU) has no TRANSPOSE: the NHWC to NCHW permute that
-the Ethos-U85 ran as its first operator is handled by the Arm backend's
-layout passes, and whatever it cannot fold stays on the CPU, so the export
-reports what runs where. What the layout passes cannot fold, Vela turns into
+The Ethos-U55 (the E7's NPU) has no TRANSPOSE: the NHWC to NCHW permute of
+the input is handled by the Arm backend's layout passes, and whatever it
+cannot fold stays on the CPU, so the export reports what runs where. What the layout passes cannot fold, Vela turns into
 one copy per channel. So the outputs are anchor-major, (1, N, 4) and (1, N, C),
 which is the NPU's NHWC order flattened (channel-major outputs cost 209 such
 copies), and the two attention blocks take q, k and v as column slices of the

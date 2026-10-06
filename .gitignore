@@ -11,13 +11,11 @@ __pycache__/
 # are generated; the layers' RTE/ configuration files are sources.
 out/
 tmp/
-RTE/_*/
+**/RTE/_*/
 .cmsis/
 *.cbuild-idx.yml
 *.cbuild-pack.yml
 *.cbuild-mlops.yml
-# Written by hand for the traffic counter's Ethos-U55 (see the file).
-!ai_layer_traffic/cmsis-executorch.cbuild-mlops.yml
 *.update@*
 .cmd.jlink
 
@@ -87,8 +85,8 @@ fvp_stdout.log
 !.vscode/fvp.Dockerfile
 !.vscode/launch.json
 
-# SDS recordings of the rendered frames (documentation/npu-render.md); the
-# stream metadata *.sds.yml next to them is source.
+# SDS recordings and the videos made from them; the stream metadata *.sds.yml
+# next to them is source.
 recordings/*.sds
 recordings/*.index.txt
 recordings/*.mp4
@@ -102,19 +100,14 @@ recordings/traffic/*/
 .sdsstudio
 *.sdsio.yml
 
-# The Quake source (GPL) is fetched by quake/fetch_quake.py, never committed;
-# neither is the game data.
-quake/upstream/
-quake/data/
-*.pak
-
-# The cat detector: the test image is generated from a photo that is not ours
-# to redistribute (yolo/make_test_image.py), and model/yolo.py caches the
+# The test image is generated from a photo that is not ours to redistribute
+# (traffic/make_test_image.py), and model/yolo.py caches the COCO-pretrained
 # YOLO26n weights and the COCO128 calibration images next to itself.
-yolo/test_image.c
-yolo/test_image.h
 traffic/test_image.c
 traffic/test_image.h
 model/.cache
 # Frames ffmpeg extracts for the "SDS: video to CameraIn stream" task.
 .sds_frames/
+
+# macOS Finder metadata
+.DS_Store

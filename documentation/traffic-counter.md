@@ -5,14 +5,17 @@ camera are detected by Ultralytics YOLO26n on the Ethos-U55-256 next to the
 Cortex-M55 HP core, followed from frame to frame by a small tracker and
 counted, per class and direction, as they cross a line on the picture. The
 panel shows the picture, the tracks, the line and the tallies. The project is
-`traffic/traffic.cproject.yml`, target-type `AppKit-E7`, a fork of the cat
-detector of the AppKit-E8 ([yolo-cats.md](yolo-cats.md)).
+`traffic/traffic.cproject.yml`, target-type `AppKit-E7`; the same application
+and AI layer also run on the Corstone-300 FVP (target-type `SSE-300-U55`, see
+[On the FVP](#on-the-fvp)). It started as a fork of the YOLO26n cat detector
+for the Ensemble E8 in the Arm cmsis-executorch example.
 
 ## The model
 
-[`model/traffic.py`](../model/traffic.py) is the cut of YOLO26n that
-`model/yolo.py` makes for the cat, with the classification branch ending in
-the five COCO vehicle classes instead of the cat alone. Its outputs are
+[`model/traffic.py`](../model/traffic.py) cuts YOLO26n at its NMS-free
+one-to-one head (the weights, anchors, letterbox and calibration images come
+from `model/yolo.py`), with the classification branch ending in the five COCO
+vehicle classes. Its outputs are
 anchor-major, `box int8 (1, 3549, 4)` (left, top, right, bottom distance
 from each anchor, in anchor strides) and `cls int8 (1, 3549, 5)` (sigmoid
 score of bicycle, car, motorcycle, bus, truck): the NPU's NHWC order
@@ -99,25 +102,71 @@ than the attention blocks were.
 
 ```bash
 ./setup_venv.sh && .venv/bin/python -m pip install ultralytics   # once
-MODEL_FLAVOR=traffic .venv/bin/python create_ai_layer.py ai_layer_traffic/cmsis-executorch.cbuild-mlops.yml
 .venv/bin/python traffic/make_test_image.py      # the test image, traffic/test_image.c (not committed)
+cbuild setup cmsis-executorch.csolution.yml --active AppKit-E7 --packs   # writes cmsis-executorch.cbuild-mlops.yml
+.venv/bin/python create_ai_layer.py cmsis-executorch.cbuild-mlops.yml   # only after changing model/traffic.py
 cbuild cmsis-executorch.csolution.yml --active AppKit-E7 --packs
 ```
+
+The AI layer `ai_layer/` is committed, so the export is only needed after a
+change to the model. The `mlops:` node of the csolution gives it the
+Ethos-U55-256 and the Vela system configuration `RTSS_HP_SRAM_MRAM` of the
+Ensemble pack's `ensemble_vela.ini` (the HP core's NPU: scratch in the SRAM,
+command stream and weights in the MRAM); see [mlops-flow.md](mlops-flow.md).
 
 The Secure Enclave has to boot the HP core from its MRAM region: the "Alif:
 Install M55_HP debug stubs (AppKit-E7)" task (SW4 on SEUART; the boot table
 is `.alif/M55_HP_mram_cfg_e7.json` with the E7's own device configuration
 `.alif/app-device-config-e7.json`, silicon revision B4), or
 `tools/setools_mram.py --part E7` to program the image itself through the
-SE. Then load and debug `AppKit-E7` from the CMSIS view, or the launch
-configuration "M55_HP JLink AppKit-E7 traffic".
+SE. Then load and debug `AppKit-E7` from the CMSIS view (launch
+configuration "M55_HP JLink (launch)").
 
 The console is a log buffer in the DTCM, `console_log`, that the debugger
-reads (`JLINK_DEVICE=AE722F80F55D5LS_M55_HP python tools/devkit.py log
+reads (`python tools/console_log.py
 out/traffic/AppKit-E7/Release/traffic.axf.map`). The global `traffic_status`
 holds the tallies (`counts`), the frame counters, the times of each step in
 microseconds, the camera gain and white balance, the live tracks and the
 latest detections; writing 1 to `traffic_reset_counts` zeroes the tallies.
+
+## On the FVP
+
+The target-type `SSE-300-U55` is the Corstone-300 with a Cortex-M55 and an
+Ethos-U55-256, simulated by `FVP_Corstone_SSE-300_Ethos-U55`: the NPU
+configuration of the E7's HP core, so the AI layer is the same and the
+command stream the same. The FVP has no camera, panel, joystick or SDS link;
+its board layer ([`board/Corstone-300/`](../board/Corstone-300/)) leaves out
+their `APP_HAS_*` defines, so `app_traffic.cpp` takes the test image, and sets
+`TRAFFIC_FRAMES` (3): the test image goes through the detector and the tracker
+that many times, every frame's detections go to the model's stdout over
+semihosting, and `exit()` ends the simulation:
+
+```text
+Traffic counter: YOLO26n on the Ethos-U55, input 416x416 RGB888, core 32 MHz, line at 208 vertical
+frame 0: 2 vehicles, detect 1203 us (NPU 163 us)
+  TRUCK      0.65  x1 161 y1 233 x2 293 y2 314
+  TRUCK      0.50  x1 335 y1 201 x2 415 y2 363
+...
+Test_result: PASS
+```
+
+The NPU runs the same int8 command stream on the same input as on the
+board, so the detections are the same; the times are not: the FVP's NPU runs
+in fast mode (`ethosu.extra_args=--fast` in
+`board/Corstone-300/fvp_config.txt`) and the model times nothing like the
+hardware; three frames take about 5 s of wall time. Code and data live in
+the DDR4 (`board/Corstone-300/regions_SSE-300.h`): the program, the test
+image, the NPU scratch and the input slots exceed the SSE-300's SRAMs.
+
+```bash
+cbuild cmsis-executorch.csolution.yml --active SSE-300-U55 --packs
+FVP_Corstone_SSE-300_Ethos-U55 -f board/Corstone-300/fvp_config.txt -a out/traffic/SSE-300-U55/Release/traffic.axf
+```
+
+In VS Code, **Run** and **Debug** in the CMSIS view do the same with
+`.vscode/fvp.sh` as the model, which on macOS runs the Linux FVP in Docker
+(the image is built on first use, `.vscode/fvp.Dockerfile`). The FVP needs an
+Arm user-based license (the Keil MDK Community license is enough).
 
 ## The pipeline
 
@@ -149,9 +198,9 @@ module the layer's sensor component and `RTE_MT9M114_CAMERA_SENSOR_MIPI_IMAGE_CO
 
 ## Recording and playback (SDS)
 
-As for the cat detector: the streams `CameraIn` (each 416x416 RGB888 model
-input) and `Detections` (a `detections_t` per frame, now with a class per
-box), metadata in `recordings/traffic/*.sds.yml`.
+Two streams: `CameraIn` (each 416x416 RGB888 model input) and `Detections`
+(a `detections_t` per frame, a class per box), metadata in
+`recordings/traffic/*.sds.yml`.
 
 ```bash
 .venv/bin/python traffic/sds_session.py record 20     # 20 s from the camera
@@ -289,8 +338,8 @@ because the SDS client sends its command headers straight from the stack.
 | SRAM1, 2.5 MB at 0x08000000 | the `Panel` stream buffer (230 kB), two model input slots (519 kB each) and Vela's scratch (1.25 MB, `APP_TEMP_POOL_SECTION`; the NPU runs 81 ms from here as from SRAM0); 98 % used; `UNINIT`, powered through the Secure Enclave by the application; the CPI and the CDC200 cannot reach it, so the camera frames and the panel buffers are in SRAM0. SRAM8 (2 MB at 0x63200000) is no alternative for a panel buffer: with it the display DMA hangs the interconnect at boot, the debug port with it, and the image in MRAM then has to be replaced with the reset button pressed while the J-Link connects |
 | DTCM, 1 MB | the console log, the SDS input buffer, the C library, the tracker (with the attention on the CPU also the outputs of `mid`, 139 kB, the two attention outputs and the attention core's buffers: 92 % instead of 72 %); the non-secure region at its end holds the USB DMA buffers and RTX's dynamic memory |
 
-Unlike the E8's, the E7's SRAM0 and SRAM1 are not contiguous, so the scatter
-file places them separately; the input slots went from three to two to fit.
+The E7's SRAM0 and SRAM1 are not contiguous, so the scatter file places
+them separately; the input slots went from three to two to fit.
 
 ## Camera on the AppKit-E7
 
