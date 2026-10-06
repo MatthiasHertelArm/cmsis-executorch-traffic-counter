@@ -15,6 +15,9 @@ tmp/
 .cmsis/
 *.cbuild-idx.yml
 *.cbuild-pack.yml
+# The solution's pack lock file is source: it pins the pack versions the
+# AppKit-E7 build was validated with (its RTE config files are from them).
+!/cmsis-executorch.cbuild-pack.yml
 *.cbuild-mlops.yml
 *.update@*
 .cmd.jlink
