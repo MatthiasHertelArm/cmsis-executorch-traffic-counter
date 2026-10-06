@@ -1,5 +1,5 @@
-# Python
-.venv/
+# Python (no trailing slash: a .venv that links to a shared venv is ignored too)
+.venv
 __pycache__/
 *.pyc
 
@@ -16,6 +16,8 @@ RTE/_*/
 *.cbuild-idx.yml
 *.cbuild-pack.yml
 *.cbuild-mlops.yml
+# Written by hand for the traffic counter's Ethos-U55 (see the file).
+!ai_layer_traffic/cmsis-executorch.cbuild-mlops.yml
 *.update@*
 .cmd.jlink
 
@@ -113,6 +115,6 @@ yolo/test_image.c
 yolo/test_image.h
 traffic/test_image.c
 traffic/test_image.h
-model/.cache/
+model/.cache
 # Frames ffmpeg extracts for the "SDS: video to CameraIn stream" task.
 .sds_frames/

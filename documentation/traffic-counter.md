@@ -22,10 +22,12 @@ per-channel copies on the Ethos-U55.
 The weights are YOLO26n without its two attention blocks, fine-tuned on the
 COCO images with vehicles ([`model/yolo26n-noattn.yaml`](../model/yolo26n-noattn.yaml),
 `traffic/train_vehicles.py`, see "Training" below): the whole network is one
-method, `detect`, every operator on the NPU. Without that checkpoint
-(`model/.cache/yolo26n-noattn-vehicles.pt`), or with `TRAFFIC_WEIGHTS`
-pointing at the COCO-pretrained `yolo26n.pt`, the export keeps the attention
-and moves it to the CPU, as follows.
+method, `detect`, every operator on the NPU. The checkpoint is committed as
+[`model/yolo26n-noattn-vehicles.pt`](../model/yolo26n-noattn-vehicles.pt)
+(derived from Ultralytics' `yolo26n.pt`, under its AGPL-3.0 license).
+Without it, or with `TRAFFIC_WEIGHTS` pointing at the COCO-pretrained
+`yolo26n.pt`, the export keeps the attention and moves it to the CPU, as
+follows.
 
 The two attention blocks of YOLO26n (the PSA in layer 10 and in layer 22,
 13x13 tokens, 2 heads) run on the CPU. The Ethos-U55 has no matrix multiply:
@@ -79,7 +81,7 @@ vehicle that are not among the first 300 (those are the test set of
 `model/yolo26n-noattn.yaml` from `yolo26n.pt` (635 of its 720 tensors; the
 two replaced blocks start from scratch) at 416 x 416 for 50 epochs with
 Ultralytics' defaults (MuSGD, lr 0.01), on an M4 Max's GPU (MPS) in 9 hours,
-and copies the best weights to `model/.cache/yolo26n-noattn-vehicles.pt`.
+and copies the best weights to `model/yolo26n-noattn-vehicles.pt`.
 The first epochs lose accuracy (the learning rate ramps up while the new
 blocks are random), the rest win it back and more:
 

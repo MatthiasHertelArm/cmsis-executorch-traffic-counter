@@ -25,8 +25,8 @@ images.cocodataset.org.
 
 Train: Ultralytics on this Mac's GPU (MPS), 416 x 416, batch 32 (about 64
 images per second on an M4 Max, 50 epochs in 9 hours). The best weights
-are copied to model/.cache/yolo26n-noattn-vehicles.pt, which model/traffic.py
-then uses.
+are copied to model/yolo26n-noattn-vehicles.pt (committed), which
+model/traffic.py then uses.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WORK = ROOT / "tmp" / "train_vehicles"
 MODEL_YAML = ROOT / "model" / "yolo26n-noattn.yaml"
 WEIGHTS = ROOT / "model" / ".cache" / "yolo26n.pt"
-INSTALLED = ROOT / "model" / ".cache" / "yolo26n-noattn-vehicles.pt"  # model/traffic.py's default
+INSTALLED = ROOT / "model" / "yolo26n-noattn-vehicles.pt"  # model/traffic.py's default, committed
 LABELS_URL = "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco2017labels.zip"
 IMAGES_URL = "http://images.cocodataset.org/{split}/{name}.jpg"
 VEHICLES = {"1", "2", "3", "5", "7"}  # COCO bicycle, car, motorcycle, bus, truck
@@ -139,7 +139,7 @@ def train(epochs: int, batch: int, resume: bool) -> None:
 
 
 def install() -> None:
-    """The best weights to model/.cache/, where model/traffic.py takes them from."""
+    """The best weights to model/, where model/traffic.py takes them from."""
     import shutil
 
     best = WORK / "runs" / "noattn" / "weights" / "best.pt"

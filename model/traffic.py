@@ -173,11 +173,11 @@ def decode(box: np.ndarray, score: np.ndarray, threshold: float, size: int | Non
 # ---------------------------------------------------------------------------
 ATTENTION = os.environ.get("TRAFFIC_ATTENTION", "cpu")
 # The weights: TRAFFIC_WEIGHTS, else YOLO26n without its attention blocks
-# fine-tuned on the COCO images with vehicles (model/yolo26n-noattn.yaml,
-# traffic/train_vehicles.py installs it as model/.cache/yolo26n-noattn-vehicles.pt),
+# fine-tuned on the COCO images with vehicles (model/yolo26n-noattn.yaml trained
+# by traffic/train_vehicles.py, committed as model/yolo26n-noattn-vehicles.pt),
 # else the COCO-pretrained yolo26n.pt. A network without PSA blocks is always
 # the single method `detect`: there is no attention to take off the NPU.
-TRAINED = CACHE / "yolo26n-noattn-vehicles.pt"
+TRAINED = Path(__file__).resolve().parent / "yolo26n-noattn-vehicles.pt"
 WEIGHTS = os.environ.get("TRAFFIC_WEIGHTS") or (str(TRAINED) if TRAINED.is_file() else None)
 
 
