@@ -12,8 +12,8 @@ plays a recorded clip back into the detector instead of the camera.
 
 | | |
 |---|---|
-| NPU | 81 ms per 416x416 frame (1.13 GMAC, 2.46 MB program in MRAM) |
-| Loop with the camera | 11.5 fps; the camera conversion runs while the NPU works |
+| NPU | 31 ms per 416x416 frame (1.12 GMAC, 2.3 MB program in MRAM) |
+| Loop with the camera | 25 fps; the camera conversion runs while the NPU works |
 | SDS over USB | a 40-frame clip (20.7 MB) plays in about 8 s |
 
 The repository is a fork of the Arm example

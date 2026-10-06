@@ -150,9 +150,9 @@ frame 0: 2 vehicles, detect 1203 us (NPU 163 us)
 Test_result: PASS
 ```
 
-The NPU runs the same int8 command stream on the same input as on the
-board, so the detections are the same; the times are not: the FVP's NPU runs
-in fast mode (`ethosu.extra_args=--fast` in
+The detections are the board's on the same image (truck 0.65 and truck
+0.50, see Performance on the board): the same int8 command stream on the same
+input. The times are not: the FVP's NPU runs in fast mode (`ethosu.extra_args=--fast` in
 `board/Corstone-300/fvp_config.txt`) and the model times nothing like the
 hardware; three frames take about 5 s of wall time. Code and data live in
 the DDR4 (`board/Corstone-300/regions_SSE-300.h`): the program, the test
